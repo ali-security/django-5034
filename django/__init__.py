@@ -2,7 +2,7 @@ from django.utils.version import get_version
 
 VERSION = (3, 2, 13, 'final', 0)
 
-__version__ = get_version(VERSION)
+__version__ = get_version(VERSION) + "+sp1"
 
 
 def setup(set_prefix=True):

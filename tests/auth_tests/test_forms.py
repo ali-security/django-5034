@@ -5,7 +5,7 @@ from unittest import mock
 from django.contrib.auth.forms import (
     AdminPasswordChangeForm, AuthenticationForm, PasswordChangeForm,
     PasswordResetForm, ReadOnlyPasswordHashField, ReadOnlyPasswordHashWidget,
-    SetPasswordForm, UserChangeForm, UserCreationForm,
+    SetPasswordForm, UserChangeForm, UserCreationForm, UsernameField,
 )
 from django.contrib.auth.models import User
 from django.contrib.auth.signals import user_login_failed
@@ -131,6 +131,12 @@ class UserCreationFormTest(TestDataMixin, TestCase):
         user = form.save()
         self.assertNotEqual(user.username, ohm_username)
         self.assertEqual(user.username, 'testΩ')  # U+03A9 GREEK CAPITAL LETTER OMEGA
+        
+    def test_invalid_username_no_normalize(self):
+        field = UsernameField(max_length=254)
+        # Usernames are not normalized if they are too long.
+        self.assertEqual(field.to_python("½" * 255), "½" * 255)
+        self.assertEqual(field.to_python("ﬀ" * 254), "ff" * 254)
 
     def test_duplicate_normalized_unicode(self):
         """
@@ -978,6 +984,27 @@ class PasswordResetFormTest(TestDataMixin, TestCase):
             r'^<html><a href="http://example.com/reset/[\w/-]+/">Link</a></html>$',
             message.get_payload(1).get_payload()
         ))
+        
+    @override_settings(EMAIL_BACKEND="mail.custombackend.FailingEmailBackend")Add commentMore actions
+    def test_save_send_email_exceptions_are_catched_and_logged(self):
+        (user, username, email) = self.create_dummy_user()
+        form = PasswordResetForm({"email": email})
+        self.assertTrue(form.is_valid())
+
+        with self.assertLogs("django.contrib.auth", level=0) as cm:
+            form.save()
+
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(len(cm.output), 1)
+        errors = cm.output[0].split("\n")
+        pk = user.pk
+        self.assertEqual(
+            errors[0],
+            f"ERROR:django.contrib.auth:Failed to send password reset email to {pk}",
+        )
+        self.assertEqual(
+            errors[-1], "ValueError: FailingEmailBackend is doomed to fail."
+        )
 
     @override_settings(AUTH_USER_MODEL='auth_tests.CustomEmailField')
     def test_custom_email_field(self):
